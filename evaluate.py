@@ -1,13 +1,14 @@
-
 import copy
-from collections import defaultdict
-import numpy as np
-import pdb
+import csv
 import math
+import os
+import pdb
+from collections import defaultdict
+
+import numpy as np
 import six
 from six.moves import cPickle
-import os
-import csv
+
 
 def precook(s, n=4, out=False):
     """
@@ -20,13 +21,14 @@ def precook(s, n=4, out=False):
     """
     words = s.split()
     counts = defaultdict(int)
-    for k in range(1,n+1):
-        for i in range(len(words)-k+1):
-            ngram = tuple(words[i:i+k])
+    for k in range(1, n + 1):
+        for i in range(len(words) - k + 1):
+            ngram = tuple(words[i : i + k])
             counts[ngram] += 1
     return counts
 
-def cook_refs(refs, n=4): ## lhuang: oracle will call with "average"
+
+def cook_refs(refs, n=4):  ## lhuang: oracle will call with "average"
     '''Takes a list of reference sentences for a single segment
     and returns an object that encapsulates everything that BLEU
     needs to know about them.
@@ -36,6 +38,7 @@ def cook_refs(refs, n=4): ## lhuang: oracle will call with "average"
     '''
     return [precook(ref, n) for ref in refs]
 
+
 def cook_test(test, n=4):
     '''Takes a test sentence and returns an object that
     encapsulates everything that BLEU needs to know about it.
@@ -44,6 +47,7 @@ def cook_test(test, n=4):
     :return: result (dict)
     '''
     return precook(test, n, True)
+
 
 def sim(vec_hyp, vec_ref, norm_hyp, norm_ref, length_hyp, length_ref, n=4, sigma=6.0):
     '''
@@ -61,25 +65,25 @@ def sim(vec_hyp, vec_ref, norm_hyp, norm_ref, length_hyp, length_ref, n=4, sigma
     val = np.array([0.0 for _ in range(n)])
     for n in range(n):
         # ngram
-        for (ngram,count) in vec_hyp[n].items():
+        for (ngram, count) in vec_hyp[n].items():
             # vrama91 : added clipping
             val[n] += min(vec_hyp[n][ngram], vec_ref[n][ngram]) * vec_ref[n][ngram]
 
         if (norm_hyp[n] != 0) and (norm_ref[n] != 0):
-            val[n] /= (norm_hyp[n]*norm_ref[n])
+            val[n] /= norm_hyp[n] * norm_ref[n]
 
-        assert(not math.isnan(val[n]))
+        assert not math.isnan(val[n])
         # vrama91: added a length based gaussian penalty
-        #print('penalty', length_hyp, length_ref, np.e**(-(delta**2)/(2*sigma**2)))
-        val[n] *= np.e**(-(delta**2)/(2*sigma**2))
+        # print('penalty', length_hyp, length_ref, np.e**(-(delta**2)/(2*sigma**2)))
+        val[n] *= np.e ** (-(delta**2) / (2 * sigma**2))
     return val
 
+
 class CiderScorer(object):
-    """CIDEr scorer.
-    """
+    """CIDEr scorer."""
 
     def copy(self):
-        ''' copy the refs.'''
+        '''copy the refs.'''
         new = CiderScorer(n=self.n)
         new.ctest = copy.copy(self.ctest)
         new.crefs = copy.copy(self.crefs)
@@ -93,7 +97,7 @@ class CiderScorer(object):
         return new
 
     def __init__(self, df_mode="corpus", test=None, refs=None, n=4, sigma=6.0):
-        ''' singular instance '''
+        '''singular instance'''
         self.n = n
         self.sigma = sigma
         self.crefs = []
@@ -102,11 +106,13 @@ class CiderScorer(object):
         self.ref_len = None
         self.document_frequency = defaultdict(float)
         if self.df_mode != "corpus":
-            pkl_file = cPickle.load(open(os.path.join(df_mode),'rb'), **(dict(encoding='latin1') if six.PY3 else {}))
+            pkl_file = cPickle.load(
+                open(os.path.join(df_mode), 'rb'), **(dict(encoding='latin1') if six.PY3 else {})
+            )
             self.ref_len = np.log(float(pkl_file['ref_len']))
             self.document_frequency = pkl_file['document_frequency']
         self.cook_append(test, refs)
-    
+
     def clear(self):
         self.crefs = []
         self.ctest = []
@@ -117,12 +123,15 @@ class CiderScorer(object):
         if refs is not None:
             self.crefs.append(cook_refs(refs, self.n))
             if test is not None:
-                self.ctest.append(cook_test(test, self.n)) ## N.B.: -1
+                self.ctest.append(cook_test(test, self.n))  ## N.B.: -1
             else:
-                self.ctest.append(None) # lens of crefs and ctest have to match
+                self.ctest.append(None)  # lens of crefs and ctest have to match
 
     def size(self):
-        assert len(self.crefs) == len(self.ctest), "refs/test mismatch! %d<>%d" % (len(self.crefs), len(self.ctest))
+        assert len(self.crefs) == len(self.ctest), "refs/test mismatch! %d<>%d" % (
+            len(self.crefs),
+            len(self.ctest),
+        )
         return len(self.crefs)
 
     def __iadd__(self, other):
@@ -136,6 +145,7 @@ class CiderScorer(object):
             self.crefs.extend(other.crefs)
 
         return self
+
     def compute_doc_freq(self):
         '''
         Compute term frequency for reference data.
@@ -145,7 +155,7 @@ class CiderScorer(object):
         '''
         for refs in self.crefs:
             # refs, k ref captions of one image
-            for ngram in set([ngram for ref in refs for (ngram,count) in ref.items()]):
+            for ngram in {ngram for ref in refs for (ngram, count) in ref.items()}:
                 self.document_frequency[ngram] += 1
             # maxcounts[ngram] = max(maxcounts.get(ngram,0), count)
 
@@ -160,13 +170,13 @@ class CiderScorer(object):
         vec = [defaultdict(float) for _ in range(self.n)]
         length = 0
         norm = [0.0 for _ in range(self.n)]
-        for (ngram,term_freq) in cnts.items():
+        for (ngram, term_freq) in cnts.items():
             # give word count 1 if it doesn't appear in reference corpus
             df = np.log(max(1.0, self.document_frequency[ngram]))
             # ngram index
-            n = len(ngram)-1
+            n = len(ngram) - 1
             # tf (term_freq) * idf (precomputed idf) for n-grams
-            vec[n][ngram] = float(term_freq)*(self.ref_len - df)
+            vec[n][ngram] = float(term_freq) * (self.ref_len - df)
             # compute norm for the vector.  the norm will be used for computing similarity
             norm[n] += pow(vec[n][ngram], 2)
 
@@ -180,8 +190,8 @@ class CiderScorer(object):
         # compute log reference length
         if self.df_mode == "corpus":
             self.ref_len = np.log(float(len(self.crefs)))
-        #elif self.df_mode == "coco-val-df":
-            # if coco option selected, use length of coco-val set
+        # elif self.df_mode == "coco-val-df":
+        # if coco option selected, use length of coco-val set
         #    self.ref_len = np.log(float(40504))
 
         scores = []
@@ -192,10 +202,12 @@ class CiderScorer(object):
             score = np.zeros((len(refs), self.n))
             for rid, ref in enumerate(refs):
                 vec_ref, norm_ref, length_ref = self.counts2vec(ref)
-                score[rid] += sim(vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma)
-            #print(score)
+                score[rid] += sim(
+                    vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma
+                )
+            # print(score)
             # change by vrama91 - mean of ngram scores, instead of sum
-            score_avg = np.mean(score, 1) #Cider本身就是从1gram到ngram的平均值。
+            score_avg = np.mean(score, 1)  # Cider本身就是从1gram到ngram的平均值。
             # divide by number of references
             score_avg = np.sum(score_avg) / len(refs)
             # multiply score by 10
@@ -210,14 +222,13 @@ class CiderScorer(object):
             self.document_frequency = defaultdict(float)
             self.compute_doc_freq()
             # assert to check document frequency
-            assert(len(self.ctest) >= max(self.document_frequency.values()))
+            assert len(self.ctest) >= max(self.document_frequency.values())
             # import json for now and write the corresponding files
         # compute cider score
         score = self.compute_cider()
         # debug
         # print score
         return np.mean(np.array(score)), np.array(score)
-
 
     def my_get_cider(self, gts, res):
 
@@ -232,12 +243,11 @@ class CiderScorer(object):
             vec, norm, length = self.counts2vec(test)
             for rid, ref in enumerate(crefs):
                 vec_ref, norm_ref, length_ref = self.counts2vec(ref)
-                scores[tid, rid] += sim(vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma)
+                scores[tid, rid] += sim(
+                    vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma
+                )
 
-        scores = np.mean(scores, -1)
-        scores *= 10.0
-
-        return scores
+        return self._extracted_from_my_get_self_cider_18(scores)
 
     def my_get_self_cider(self, res):
 
@@ -251,18 +261,25 @@ class CiderScorer(object):
             vec, norm, length = test
             for rid, ref in enumerate(ctest):
                 vec_ref, norm_ref, length_ref = ref
-                scores[tid, rid] += sim(vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma)
+                scores[tid, rid] += sim(
+                    vec, vec_ref, norm, norm_ref, length, length_ref, self.n, self.sigma
+                )
 
+        return self._extracted_from_my_get_self_cider_18(scores)
+
+    # TODO Rename this here and in `my_get_cider` and `my_get_self_cider`
+    def _extracted_from_my_get_self_cider_18(self, scores):
         scores = np.mean(scores, -1)
         scores *= 10.0
-
         return scores
+
 
 class CiderD:
     """
     Main Class to compute the CIDEr metric
 
     """
+
     def __init__(self, n=4, sigma=6.0, df="corpus"):
         # set cider to sum over 1 to 4-grams
         self._n = n
@@ -289,10 +306,10 @@ class CiderD:
             ref = gts[res_id['image_id']]
 
             # Sanity check.
-            assert(type(hypo) is list)
-            assert(len(hypo) == 1)
-            assert(type(ref) is list)
-            assert(len(ref) > 0)
+            assert type(hypo) is list
+            assert len(hypo) == 1
+            assert type(ref) is list
+            assert len(ref) > 0
             tmp_cider_scorer += (hypo[0], ref)
 
         (score, scores) = tmp_cider_scorer.compute_score()
@@ -313,10 +330,7 @@ class CiderD:
         for _gts, _res in zip(gts, res):
 
             tmp = tmp_cider_scorer.my_get_cider(_gts, _res)
-            if avg_refs:
-                tmp = np.mean(tmp, 1)
-            else:
-                tmp = np.mean(tmp, 1)
+            tmp = np.mean(tmp, 1)
             scores.append(tmp)
         scores = np.array(scores)
         score = np.mean(scores)
@@ -330,11 +344,10 @@ class CiderD:
         tmp_cider_scorer = self.cider_scorer.copy_empty()
         tmp_cider_scorer.clear()
         scores = []
-        for  _res in res:
+        for _res in res:
             tmp = tmp_cider_scorer.my_get_self_cider(_res)
             scores.append(tmp)
         return scores
 
     def method(self):
         return "CIDEr-D"
-    
