@@ -130,3 +130,6 @@ dmypy.json
 
 # MacOS
 .DS_Store
+
+# Data，不上传本地的训练和测试数据，避免侵权
+data/*
